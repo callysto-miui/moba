@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0e12">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Arena of Embers — Mobile MOBA</title>
+<style>
+  :root{
+    --bg: #0b0e12;
+    --panel: #14181f;
+    --panel-edge: #262c38;
+    --gold: #e0b25c;
+    --blue: #5bd0ff;
+    --red: #ff6b63;
+    --text: #e9e4d8;
+    --text-dim: #9aa1ad;
+    --q: #ff9d4d;
+    --w: #7ee0ff;
+    --e: #c988ff;
+    --r: #ff5252;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select:none; -webkit-user-select:none; }
+  html,body{
+    margin:0; padding:0; background: #000; color: var(--text);
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+    overflow:hidden; height:100%; width:100%;
+    overscroll-behavior:none; touch-action:none;
+  }
+  #root{
+    position:fixed; inset:0; display:flex; flex-direction:column;
+    background: var(--bg);
+  }
+
+  /* ---------- top HUD ---------- */
+  #topbar{
+    flex:0 0 auto; position:relative; z-index:40;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding: calc(8px + var(--safe-t)) calc(10px + var(--safe-r)) 8px calc(10px + var(--safe-l));
+    background: linear-gradient(to bottom, rgba(8,10,14,0.96), rgba(8,10,14,0.55));
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  #hud-left{ display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
+  .level-pill{
+    flex:0 0 auto; background: radial-gradient(circle at 30% 30%, #3a4257, #1a1e29);
+    border:1px solid var(--panel-edge); border-radius:20px; padding:5px 10px;
+    font-size:12px; font-weight:bold; color:#fff; white-space:nowrap;
+  }
+  #hud-bars{ display:flex; flex-direction:column; gap:3px; width:100%; max-width:260px; }
+  .bar-track{ height:14px; border-radius:4px; background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.08); position:relative; overflow:hidden; }
+  .bar-track.mp{ height:8px; }
+  .bar-track.xp{ height:5px; }
+  .bar-fill{ height:100%; border-radius:3px; transition: width 0.15s linear; }
+  #hud-hp-bar{ background: linear-gradient(to right,#3fae4a,#7be26f); }
+  #hud-mp-bar{ background: linear-gradient(to right,#3f6fd9,#7ea8ff); }
+  #hud-xp-bar{ background: linear-gradient(to right,#e0b25c,#ffe9a8); }
+  #hud-hp-text{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:9.5px; color:#eee; text-shadow:0 1px 2px #000; }
+
+  #hud-right{ flex:0 0 auto; display:flex; align-items:center; gap:8px; }
+  .stat-pill{ background: rgba(20,24,31,0.85); border:1px solid var(--panel-edge); border-radius:20px; padding:5px 12px; font-size:13px; display:flex; align-items:center; gap:5px; font-weight:bold; white-space:nowrap; }
+  #hud-gold{ color: var(--gold); }
+  #shop-btn, #recall-btn-top{
+    flex:0 0 auto; width:38px; height:38px; border-radius:50%;
+    background:#1b1f28; border:1px solid var(--panel-edge); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:17px; cursor:pointer;
+  }
+
+  /* ---------- game area (square canvas, letterboxed) ---------- */
+  #game-area{ flex:1 1 auto; position:relative; display:flex; align-items:center; justify-content:center; min-height:0; overflow:hidden; }
+  #app{ position:relative; box-shadow: 0 0 0 1px var(--panel-edge); background:#000; touch-action:none; }
+  canvas{ display:block; background:#000; touch-action:none; width:100%; height:100%; }
+
+  #recall-bar{
+    position:absolute; left:50%; top:10px; transform:translateX(-50%);
+    width:150px; height:8px; background:rgba(0,0,0,0.6); border-radius:4px; display:none;
+    border:1px solid rgba(255,255,255,0.15); z-index:20;
+  }
+  #recall-fill{ height:100%; width:0%; background: linear-gradient(to right,#7ee0ff,#bcefff); border-radius:3px; }
+
+  #log{ position:absolute; top:22px; left:8px; width:min(46%,220px); font-size:10.5px; line-height:1.45; pointer-events:none; text-shadow:0 1px 2px #000; z-index:20; }
+  #log div{ opacity:0.92; margin-bottom:1px; }
+
+  /* ---------- rotate device overlay ---------- */
+  #rotate-overlay{
+    display:none; position:fixed; inset:0; z-index:500; background:#05070a;
+    flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:20px;
+  }
+  #rotate-overlay .icon{ font-size:52px; animation: rot 1.6s ease-in-out infinite; }
+  @keyframes rot{ 0%,100%{ transform:rotate(0deg);} 50%{ transform:rotate(-90deg);} }
+  @media (orientation: portrait) and (max-aspect-ratio: 4/3){
+    #rotate-overlay{ display:flex; }
+  }
+
+  /* ---------- joystick ---------- */
+  #joystick-zone{
+    position:fixed; left:calc(14px + var(--safe-l)); bottom:calc(14px + var(--safe-b));
+    width:150px; height:150px; z-index:60; touch-action:none;
+  }
+  #joystick-outer{
+    position:absolute; inset:0; border-radius:50%;
+    background: radial-gradient(circle at 40% 35%, rgba(255,255,255,0.06), rgba(20,24,31,0.55));
+    border:2px solid rgba(255,255,255,0.15);
+  }
+  #joystick-thumb{
+    position:absolute; left:50%; top:50%; width:56px; height:56px; margin:-28px 0 0 -28px;
+    border-radius:50%; background: radial-gradient(circle at 35% 30%, #ffe9a8, var(--gold));
+    border:2px solid rgba(0,0,0,0.35); box-shadow:0 4px 12px rgba(0,0,0,0.5);
+    transition: transform 0.05s linear;
+  }
+
+  /* ---------- ability zone ---------- */
+  #ability-zone{
+    position:fixed; right:calc(12px + var(--safe-r)); bottom:calc(14px + var(--safe-b));
+    z-index:60; display:flex; flex-direction:column; align-items:flex-end; gap:8px; touch-action:none;
+  }
+  .ability-row{ display:flex; gap:9px; }
+  .ability{
+    width:60px; height:60px; border-radius:14px; position:relative;
+    background: #1b1f28; border:2px solid var(--panel-edge);
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03), 0 3px 10px rgba(0,0,0,0.4);
+  }
+  .ability .icon{ font-size:24px; z-index:2; filter: drop-shadow(0 1px 2px #000); }
+  .ability .key{ position:absolute; top:3px; left:6px; font-size:10px; color:#cfd4dd; z-index:3; font-weight:bold; }
+  .ability .cd-overlay{ position:absolute; left:0; right:0; bottom:0; height:0%; background: rgba(0,0,0,0.72); z-index:1; transition: height 0.1s linear; }
+  .ability .cd-text{ position:absolute; z-index:3; font-size:16px; font-weight:bold; color:#fff; text-shadow:0 1px 3px #000; }
+  #ab-q{ border-color: var(--q); box-shadow: 0 0 10px -3px var(--q); }
+  #ab-w{ border-color: var(--w); box-shadow: 0 0 10px -3px var(--w); }
+  #ab-e{ border-color: var(--e); box-shadow: 0 0 10px -3px var(--e); }
+  #ab-r{ border-color: var(--r); box-shadow: 0 0 10px -3px var(--r); }
+  .ability.locked{ opacity:0.45; }
+  .ability.armed{ animation: armpulse 0.8s ease-in-out infinite; }
+  @keyframes armpulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(255,255,255,0.55);} 50%{ box-shadow:0 0 0 7px rgba(255,255,255,0);} }
+
+  .sub-row{ display:flex; gap:9px; }
+  #ab-atk, #ab-recall{
+    width:48px; height:48px; border-radius:50%; background:#1b1f28; border:2px solid var(--panel-edge);
+    display:flex; align-items:center; justify-content:center; font-size:20px;
+  }
+  #ab-atk{ border-color:#ff6b63; box-shadow: 0 0 10px -3px #ff6b63; }
+  #ab-recall{ border-color:#7ee0ff; box-shadow: 0 0 10px -3px #7ee0ff; }
+
+  #aim-hint{
+    position:fixed; left:50%; bottom: calc(180px + var(--safe-b)); transform:translateX(-50%);
+    z-index:65; background:rgba(10,12,16,0.85); border:1px solid var(--panel-edge); border-radius:20px;
+    padding:6px 16px; font-size:12.5px; color:#ffe9a8; display:none; white-space:nowrap;
+  }
+
+  /* ---------- shop modal ---------- */
+  #shop-modal{ position:fixed; inset:0; z-index:300; display:none; align-items:flex-end; justify-content:center; background: rgba(0,0,0,0.55); }
+  #shop-panel{
+    width:100%; max-width:640px; background: var(--panel); border-top:1px solid var(--panel-edge);
+    border-radius:16px 16px 0 0; padding: 14px 14px calc(16px + var(--safe-b)) 14px;
+  }
+  #shop-panel-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  #shop-panel-head h3{ margin:0; font-size:15px; letter-spacing:0.5px; color:var(--gold); }
+  #shop-close{ width:30px; height:30px; border-radius:50%; background:#20242e; border:1px solid var(--panel-edge); color:#fff; font-size:15px; display:flex; align-items:center; justify-content:center; }
+  #shop-items{ display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
+  .shop-item{
+    padding:10px 8px; border-radius:10px; background:#1b1f28; border:1px solid var(--panel-edge);
+    font-size:12.5px; text-align:center; color: var(--text-dim); opacity:0.55;
+  }
+  .shop-item.affordable{ opacity:1; border-color:#5c6577; color:var(--text); }
+  .shop-item b{ display:block; font-size:12px; color:var(--gold); margin-top:4px; }
+  .shop-item .key{ display:none; }
+  #shop-hint{ font-size:11px; color:var(--text-dim); text-align:center; margin-top:10px; }
+
+  /* ---------- overlays ---------- */
+  .overlay{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: radial-gradient(ellipse at center, rgba(20,14,10,0.92), rgba(4,3,2,0.97));
+    text-align:center; gap:14px; z-index:150; padding:16px;
+  }
+  .overlay h1{
+    font-size: clamp(28px, 6vw, 44px); margin:0; letter-spacing:2px;
+    background: linear-gradient(to bottom, #ffe9a8, var(--gold));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow: 0 0 30px rgba(224,178,92,0.3);
+  }
+  .overlay p{ color: var(--text-dim); max-width:520px; font-size:13.5px; line-height:1.65; margin:0; }
+  .overlay .controls{ display:flex; gap:16px; margin-top:4px; flex-wrap:wrap; justify-content:center; max-width:600px; }
+  .ctrl-item{ font-size:11.5px; color:var(--text-dim); }
+  .ctrl-item b{ color:#fff; background:#20242e; border:1px solid var(--panel-edge); padding:2px 7px; border-radius:5px; margin-right:5px;}
+  button.big{
+    margin-top:8px; padding:14px 40px; font-size:16px; font-weight:bold; letter-spacing:1px;
+    background: linear-gradient(to bottom, #e0b25c, #b8863a); color:#241a08; border:none; border-radius:10px;
+    cursor:pointer; box-shadow: 0 6px 18px rgba(224,178,92,0.25);
+  }
+  #overlay-over{ display:none; }
+  #over-title{ font-size: clamp(32px, 8vw, 52px); font-weight:bold; letter-spacing:3px; }
+  #over-sub{ color: var(--text-dim); font-size:14px; }
+</style>
+</head>
+<body>
+<div id="rotate-overlay">
+  <div class="icon">📱</div>
+  <div style="font-size:16px; color:#fff; font-weight:bold;">Rotate your device</div>
+  <div style="font-size:12.5px; color:var(--text-dim); max-width:280px;">Arena of Embers plays best in landscape. Turn your phone sideways to enter the battle.</div>
+</div>
+
+<div id="root">
+  <div id="topbar">
+    <div id="hud-left">
+      <div class="level-pill">LV <span id="hud-level">1</span></div>
+      <div id="hud-bars">
+        <div class="bar-track"><div id="hud-hp-bar" class="bar-fill" style="width:100%"></div><div id="hud-hp-text"></div></div>
+        <div class="bar-track mp"><div id="hud-mp-bar" class="bar-fill" style="width:100%"></div></div>
+        <div class="bar-track xp"><div id="hud-xp-bar" class="bar-fill" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div id="hud-right">
+      <div class="stat-pill">💰 <span id="hud-gold">650</span></div>
+      <div id="recall-btn-top" title="Recall">🌀</div>
+      <div id="shop-btn" title="Shop">🛒</div>
+    </div>
+  </div>
+
+  <div id="game-area">
+    <div id="app">
+      <canvas id="game" width="900" height="900"></canvas>
+      <div id="recall-bar"><div id="recall-fill"></div></div>
+      <div id="log"></div>
+
+      <div class="overlay" id="overlay-start">
+        <h1>ARENA OF EMBERS</h1>
+        <p>You are the <b style="color:var(--blue)">Ashen Pyromancer</b>, defending the Blue Nexus against the AI-controlled <b style="color:var(--red)">Frost Warden</b>. Push the lane, last-hit minions for gold, level up, topple the towers, and destroy the enemy Nexus to win.</p>
+        <div class="controls">
+          <div class="ctrl-item"><b>Joystick</b>move</div>
+          <div class="ctrl-item"><b>Tap enemy</b>attack</div>
+          <div class="ctrl-item"><b>Q/W/R</b>tap, then tap map to aim</div>
+          <div class="ctrl-item"><b>E</b>instant nova</div>
+          <div class="ctrl-item"><b>🌀</b>recall to base</div>
+          <div class="ctrl-item"><b>🛒</b>buy items near base</div>
+        </div>
+        <button class="big" id="btn-start">ENTER THE ARENA</button>
+      </div>
+
+      <div class="overlay" id="overlay-over">
+        <h1 id="over-title" style="background:none;-webkit-text-fill-color:initial;">VICTORY!</h1>
+        <p id="over-sub"></p>
+        <button class="big" id="btn-again">PLAY AGAIN</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="aim-hint"></div>
+
+  <div id="joystick-zone">
+    <div id="joystick-outer"></div>
+    <div id="joystick-thumb"></div>
+  </div>
+
+  <div id="ability-zone">
+    <div class="ability-row">
+      <div class="ability" id="ab-q"><span class="key">Q</span><span class="icon">🔥</span><div class="cd-overlay"></div><div class="cd-text"></div></div>
+      <div class="ability" id="ab-w"><span class="key">W</span><span class="icon">💨</span><div class="cd-overlay"></div><div class="cd-text"></div></div>
+      <div class="ability" id="ab-e"><span class="key">E</span><span class="icon">🌀</span><div class="cd-overlay"></div><div class="cd-text"></div></div>
+      <div class="ability locked" id="ab-r"><span class="key">R</span><span class="icon">☄️</span><div class="cd-overlay"></div><div class="cd-text"></div></div>
+    </div>
+    <div class="sub-row">
+      <div id="ab-atk" title="Attack nearest">⚔️</div>
+      <div id="ab-recall" title="Recall">🌀</div>
+    </div>
+  </div>
+
+  <div id="shop-modal">
+    <div id="shop-panel">
+      <div id="shop-panel-head">
+        <h3>SHOP — buy near your base</h3>
+        <div id="shop-close">✕</div>
+      </div>
+      <div id="shop-items">
+        <div class="shop-item" id="shop-1"><span class="key">1</span>Ember Blade<b>400g</b></div>
+        <div class="shop-item" id="shop-2"><span class="key">2</span>Arcane Focus<b>400g</b></div>
+        <div class="shop-item" id="shop-3"><span class="key">3</span>Guardian Plate<b>380g</b></div>
+        <div class="shop-item" id="shop-4"><span class="key">4</span>Swift Boots<b>300g</b></div>
+      </div>
+      <div id="shop-hint">Items apply instantly if you're close enough to your Nexus.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================== ARENA OF EMBERS - mobile 2D MOBA =====================
+(function(){
+'use strict';
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// ---------- helpers ----------
+const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const clamp = (v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+function moveToward(u, tx, ty, spd, dt){
+  const dx = tx-u.x, dy = ty-u.y;
+  const d = Math.hypot(dx,dy);
+  if (d < 1) return d;
+  const step = Math.min(d, spd*dt);
+  u.x += dx/d*step;
+  u.y += dy/d*step;
+  return d;
+}
+function armorReduce(dmg, armor){
+  return dmg * (100/(100+Math.max(0,armor)));
+}
+let idCounter = 1;
+const nextId = ()=> idCounter++;
+
+// ---------- lane path ----------
+const LANE = [
+  {x:100, y:830},
+  {x:290, y:660},
+  {x:600, y:330},
+  {x:830, y:110}
+];
+function segLens(){
+  const lens=[]; let total=0;
+  for(let i=0;i<LANE.length-1;i++){
+    const l = dist(LANE[i],LANE[i+1]);
+    lens.push(l); total+=l;
+  }
+  return {lens,total};
+}
+const LANE_INFO = segLens();
+function pointAtFraction(t){
+  t = clamp(t,0,1);
+  let target = t*LANE_INFO.total;
+  for(let i=0;i<LANE_INFO.lens.length;i++){
+    if(target <= LANE_INFO.lens[i] || i===LANE_INFO.lens.length-1){
+      const segT = LANE_INFO.lens[i]===0?0:target/LANE_INFO.lens[i];
+      const a = LANE[i], b = LANE[i+1];
+      return {x:a.x+(b.x-a.x)*segT, y:a.y+(b.y-a.y)*segT};
+    }
+    target -= LANE_INFO.lens[i];
+  }
+  return LANE[LANE.length-1];
+}
+const BLUE_NEXUS_POS = {x:70,y:870};
+const RED_NEXUS_POS = {x:870,y:70};
+const BLUE_SPAWN = {x:120,y:820};
+const RED_SPAWN = {x:820,y:120};
+
+const bt1 = pointAtFraction(0.20), bt2 = pointAtFraction(0.44);
+const rt1 = pointAtFraction(0.80), rt2 = pointAtFraction(0.56);
+const JUNGLE_CAMP_POS = {x:560,y:760};
+const JUNGLE_CAMP2_POS = {x:340,y:220};
+
+// ---------- game state ----------
+const state = {
+  started:false, over:false, winner:null,
+  time:0,
+  entities: [], // all units
+  projectiles: [],
+  effects: [], // visual only, fading circles
+  particles: [],
+  log: [],
+  player: null,
+  enemyHero: null,
+  camps: [],
+  minionWaveTimer: 0,
+  goldTickTimer: 0,
+};
+
+// virtual joystick state (normalized -1..1 per axis, magnitude <=1)
+const joystick = {x:0, y:0, active:false};
+
+function log(msg, color){
+  state.log.unshift({msg, color: color||'#e6d9b8', t: state.time});
+  if(state.log.length>6) state.log.pop();
+}
+function heroesArr(){ return [state.player, state.enemyHero].filter(h=>h && h.alive); }
+function campUnits(){ return state.camps.filter(c=>c.unit.alive).map(c=>c.unit); }
+function allCombatUnits(){ return state.entities.concat(heroesArr(), campUnits()); }
+
+// ---------- base unit ----------
+class Unit {
+  constructor(opts){
+    Object.assign(this, {
+      id: nextId(), name:'Unit', team:'blue', x:0,y:0, hp:100, maxHp:100,
+      mana:0, maxMana:0, ad:10, ap:0, armor:0, speed:0, range:30, radius:14,
+      atkCd: 1.0, atkTimer:0, alive:true, xpValue:0, goldValue:0,
+      target:null, kind:'unit', aggroTimer:0,
+    }, opts);
+  }
+  distTo(o){ return dist(this,o); }
+  isEnemyOf(o){ return o.team !== this.team; }
+  takeDamage(amount, source, isTrue){
+    if(!this.alive) return;
+    const dmg = isTrue ? amount : armorReduce(amount, this.armor);
+    this.hp -= dmg;
+    spawnParticles(this.x, this.y-10, this.team==='blue'?'#7ec8ff':'#ff8686', 4);
+    if(this.hp <= 0){
+      this.hp = 0;
+      this.die(source);
+    }
+  }
+  die(source){
+    this.alive = false;
+    spawnParticles(this.x,this.y,'#ffd98a',18);
+    onUnitDeath(this, source);
+  }
+  update(dt){}
+  draw(){}
+}
+
+// ---------- particles & effects ----------
+function spawnParticles(x,y,color,count){
+  for(let i=0;i<count;i++){
+    const ang = Math.random()*Math.PI*2;
+    const spd = 30+Math.random()*90;
+    state.particles.push({
+      x,y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd,
+      life:0.5+Math.random()*0.4, age:0, color
+    });
+  }
+}
+function addEffect(x,y,radius,color,duration){
+  state.effects.push({x,y,radius,color,duration,age:0});
+}
+
+// ---------- minions ----------
+class Minion extends Unit {
+  constructor(team, waveLevel){
+    const isCaster = Math.random()<0.35;
+    super({
+      name: isCaster? 'Caster Minion':'Melee Minion',
+      team, kind:'minion',
+      hp: isCaster? 60+waveLevel*8 : 110+waveLevel*10,
+      maxHp: isCaster? 60+waveLevel*8 : 110+waveLevel*10,
+      ad: isCaster? 10+waveLevel*1.5 : 16+waveLevel*2,
+      armor: 4, range: isCaster? 220:34, radius:12,
+      speed: 62, atkCd: isCaster?1.6:1.0,
+      xpValue: isCaster?26:20, goldValue: isCaster?24:19,
+      isCaster,
+    });
+    this.frac = team==='blue' ? 0 : 1;
+    this.dir = team==='blue' ? 1 : -1;
+    const p = pointAtFraction(this.frac);
+    this.x = p.x; this.y = p.y;
+  }
+  update(dt){
+    if(!this.alive) return;
+    let nearest=null, nd=Infinity;
+    for(const e of allCombatUnits()){
+      if(!e.alive || !this.isEnemyOf(e)) continue;
+      if(e.kind==='nexus') continue;
+      const d = this.distTo(e);
+      if(d < 150 && d < nd){ nd=d; nearest=e; }
+    }
+    const reachedEnd = (this.team==='blue' && this.frac>=1) || (this.team==='red' && this.frac<=0);
+    if(!nearest && reachedEnd){
+      const nexus = this.team==='blue'? state.redNexus : state.blueNexus;
+      if(nexus && nexus.alive) nearest = nexus;
+    }
+    this.target = nearest;
+    if(this.target){
+      const d = this.distTo(this.target);
+      if(d <= this.range){
+        this.atkTimer -= dt;
+        if(this.atkTimer<=0){
+          this.atkTimer = this.atkCd;
+          this.target.takeDamage(this.ad, this);
+          if(this.target.kind==='tower' || this.target.kind==='nexus') this.target.aggroTimer = 3;
+        }
+      } else {
+        const spd = (this.slowUntil && this.slowUntil > state.time) ? this.speed*0.55 : this.speed;
+        moveToward(this, this.target.x, this.target.y, spd, dt);
+      }
+    } else {
+      const spd = (this.slowUntil && this.slowUntil > state.time) ? this.speed*0.55 : this.speed;
+      this.frac += (this.dir*spd*dt) / LANE_INFO.total;
+      this.frac = clamp(this.frac,0,1);
+      const p = pointAtFraction(this.frac);
+      this.x = p.x; this.y = p.y;
+    }
+  }
+  draw(){
+    if(!this.alive) return;
+    ctx.save();
+    ctx.translate(this.x,this.y);
+    ctx.fillStyle = this.team==='blue' ? '#4fa8e0' : '#d9524a';
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    if(this.isCaster){ ctx.arc(0,0,9,0,7); } else {
+      ctx.rect(-9,-9,18,18);
+    }
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+    drawHpBar(this, 16);
+  }
+}
+
+// ---------- towers & nexus ----------
+class Tower extends Unit {
+  constructor(team,x,y,label){
+    super({name:label||'Tower', team, kind:'tower', x,y, hp:1000,maxHp:1000,
+      ad:55, armor:20, range:165, radius:22, atkCd:0.9, speed:0});
+    this.aggroTimer=0;
+  }
+  update(dt){
+    if(!this.alive) return;
+    if(this.aggroTimer>0) this.aggroTimer -= dt;
+    let best=null, bestPriority=-1, bestDist=Infinity;
+    for(const e of allCombatUnits()){
+      if(!e.alive || !this.isEnemyOf(e)) continue;
+      const d = this.distTo(e);
+      if(d > this.range) continue;
+      let pr = 0;
+      if(e.kind==='minion') pr = 2;
+      else if(e.kind==='hero') pr = (e.aggroTimer>0)?1:0;
+      if(pr>0 && (pr>bestPriority || (pr===bestPriority && d<bestDist))){
+        best=e; bestPriority=pr; bestDist=d;
+      }
+    }
+    this.target = best;
+    if(this.target){
+      this.atkTimer -= dt;
+      if(this.atkTimer<=0){
+        this.atkTimer=this.atkCd;
+        this.target.takeDamage(this.ad, this);
+        spawnParticles(this.target.x,this.target.y,'#ffe27a',6);
+      }
+    }
+  }
+  die(source){
+    this.alive=false;
+    log(`${this.team==='blue'?'Blue':'Red'} tower has fallen!`, this.team==='blue'?'#8fd0ff':'#ff9b95');
+    grantGold(source, 150);
+    spawnParticles(this.x,this.y,'#ffb347',30);
+  }
+  draw(){
+    ctx.save();
+    ctx.translate(this.x,this.y);
+    const col = this.team==='blue'?'#3f8fd6':'#c9463d';
+    if(!this.alive){ ctx.restore(); return; }
+    ctx.fillStyle = col;
+    ctx.strokeStyle='#20242c'; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(0,-30); ctx.lineTo(20,10); ctx.lineTo(-20,10); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,-32,7,0,7); ctx.fillStyle='#ffe9a8'; ctx.fill();
+    ctx.restore();
+    drawHpBar(this, 42);
+  }
+}
+class Nexus extends Unit {
+  constructor(team,x,y){
+    super({name:(team==='blue'?'Blue':'Red')+' Nexus', team, kind:'nexus', x,y,
+      hp:2200,maxHp:2200, ad:0, armor:10, radius:30, speed:0});
+  }
+  die(source){
+    this.alive=false;
+    state.over = true;
+    state.winner = source && source.team ? source.team : (this.team==='blue'?'red':'blue');
+    log(`${this.name} has been destroyed!`, '#fff');
+  }
+  draw(){
+    ctx.save();
+    ctx.translate(this.x,this.y);
+    const col = this.team==='blue'?'#3f8fd6':'#c9463d';
+    const grd = ctx.createRadialGradient(0,0,2,0,0,34);
+    grd.addColorStop(0, this.alive? '#fff6d8':'#333');
+    grd.addColorStop(1, this.alive? col:'#222');
+    ctx.fillStyle=grd;
+    ctx.beginPath();
+    for(let i=0;i<6;i++){
+      const a = Math.PI/3*i - Math.PI/6;
+      const px= Math.cos(a)*28, py=Math.sin(a)*28;
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='#20242c'; ctx.lineWidth=3; ctx.stroke();
+    ctx.restore();
+    if(this.alive) drawHpBar(this, 46);
+  }
+}
+
+// ---------- jungle camp ----------
+class Camp {
+  constructor(x,y){
+    this.x=x; this.y=y; this.alive=true; this.respawnTimer=0;
+    this.unit = this.makeUnit();
+  }
+  makeUnit(){
+    return new Unit({name:'Ember Wolf', team:'neutral', kind:'camp', x:this.x,y:this.y,
+      hp:260,maxHp:260, ad:22, armor:8, radius:16, speed:0, range:40, atkCd:1.0});
+  }
+  update(dt){
+    if(this.unit.alive){
+      for(const h of [state.player, state.enemyHero]){
+        if(h && h.alive && dist(h,this.unit) < this.unit.range){
+          this.unit.atkTimer -= dt;
+          if(this.unit.atkTimer<=0){ this.unit.atkTimer=this.unit.atkCd; h.takeDamage(this.unit.ad, this.unit); }
+          break;
+        }
+      }
+    } else {
+      this.respawnTimer -= dt;
+      if(this.respawnTimer<=0){
+        this.unit = this.makeUnit();
+        log('A jungle camp has respawned', '#a8ffcf');
+      }
+    }
+  }
+  draw(){
+    if(!this.unit.alive) return;
+    ctx.save();
+    ctx.translate(this.x,this.y);
+    ctx.fillStyle='#5c7a4a';
+    ctx.beginPath(); ctx.arc(0,0,15,0,7); ctx.fill();
+    ctx.strokeStyle='#2c3a22'; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle='#e8ffb0';
+    ctx.beginPath(); ctx.arc(-5,-3,2,0,7); ctx.arc(5,-3,2,0,7); ctx.fill();
+    ctx.restore();
+    drawHpBar(this.unit, 22);
+  }
+}
+
+// ---------- hero ----------
+const ABILITY_DEFS = {
+  q:{key:'Q', name:'Emberbolt', cd:5, mana:40, cast:castQ, color:'#ff9d4d'},
+  w:{key:'W', name:'Flash Step', cd:12, mana:55, cast:castW, color:'#7ee0ff'},
+  e:{key:'E', name:'Cinder Nova', cd:10, mana:65, cast:castE, color:'#c988ff'},
+  r:{key:'R', name:'Meteor', cd:60, mana:100, cast:castR, color:'#ff5252'},
+};
+
+class Hero extends Unit {
+  constructor(team, isPlayer, name){
+    const pos = team==='blue'?BLUE_SPAWN:RED_SPAWN;
+    super({
+      name, team, kind:'hero', x:pos.x,y:pos.y,
+      hp:620,maxHp:620, mana:340,maxMana:340,
+      ad:52, ap:20, armor:24, radius:16, range:130,
+      speed:150, atkCd:0.85,
+    });
+    this.isPlayer = isPlayer;
+    this.level=1; this.xp=0; this.xpToNext=100;
+    this.gold=650;
+    this.cds = {q:0,w:0,e:0,r:0};
+    this.moveTarget = null;
+    this.attackTarget = null;
+    this.alive=true;
+    this.respawnTimer=0;
+    this.recallTimer=0; this.recalling=false;
+    this.buffs=[]; // {stat,value,expire}
+    this.items = [];
+    this.facing=1;
+  }
+  bonusStat(stat){
+    let v=0;
+    for(const b of this.buffs) if(b.stat===stat) v+=b.value;
+    return v;
+  }
+  effAd(){ return this.ad + this.bonusStat('ad'); }
+  effAp(){ return this.ap + this.bonusStat('ap'); }
+  effArmor(){ return this.armor + this.bonusStat('armor'); }
+  effSpeed(){ return (this.speed + this.bonusStat('speed')) * (this.bonusStat('slow')<0? (1+this.bonusStat('slow')):1); }
+  update(dt){
+    if(!this.alive){
+      this.respawnTimer -= dt;
+      if(this.respawnTimer<=0) this.respawn();
+      return;
+    }
+    this.buffs = this.buffs.filter(b=>{ b.expire-=dt; return b.expire>0; });
+    if(this.aggroTimer>0) this.aggroTimer -= dt;
+    for(const k in this.cds) if(this.cds[k]>0) this.cds[k]=Math.max(0,this.cds[k]-dt);
+    this.mana = Math.min(this.maxMana, this.mana + 12*dt);
+    this.hp = Math.min(this.maxHp, this.hp + (4 + this.level*0.6)*dt);
+
+    if(this.recalling){
+      this.recallTimer -= dt;
+      if(this.recallTimer<=0){
+        this.recalling=false;
+        const sp = this.team==='blue'?BLUE_SPAWN:RED_SPAWN;
+        this.x=sp.x; this.y=sp.y;
+        this.hp=this.maxHp; this.mana=this.maxMana;
+        log(`${this.name} recalled to base.`, '#bcefff');
+      }
+      return;
+    }
+
+    if(this.isPlayer){
+      this.playerUpdate(dt);
+    } else {
+      aiUpdate(this, dt);
+    }
+  }
+  playerUpdate(dt){
+    // attack logic takes priority (tapped an enemy)
+    if(this.attackTarget && this.attackTarget.alive){
+      const d = this.distTo(this.attackTarget);
+      if(d <= this.range + this.radius){
+        this.moveTarget=null;
+        this.atkTimer -= dt;
+        if(this.atkTimer<=0){
+          this.atkTimer = this.atkCd;
+          this.basicAttack(this.attackTarget);
+        }
+      } else {
+        moveToward(this, this.attackTarget.x, this.attackTarget.y, this.effSpeed(), dt);
+      }
+      return;
+    }
+    // virtual joystick: continuous free movement
+    if(joystick.active){
+      const spd = this.effSpeed();
+      const mvx = joystick.x, mvy = joystick.y;
+      const mag = Math.hypot(mvx,mvy);
+      if(mag > 0.001){
+        this.x = clamp(this.x + mvx*spd*dt, 18, W-18);
+        this.y = clamp(this.y + mvy*spd*dt, 18, H-18);
+        this.facingAngle = Math.atan2(mvy,mvx);
+      }
+      this.moveTarget = null;
+      return;
+    }
+    // fallback: tap-to-move on empty ground
+    if(this.moveTarget){
+      const d = moveToward(this, this.moveTarget.x, this.moveTarget.y, this.effSpeed(), dt);
+      if(d < 4) this.moveTarget=null;
+    }
+  }
+  basicAttack(target){
+    target.takeDamage(this.effAd(), this);
+    spawnParticles(target.x,target.y, this.team==='blue'?'#bde3ff':'#ffc3bd', 5);
+    this.checkTowerAggro();
+    if(target.kind==='hero' && target.aggroTimer!==undefined) target.aggroTimer = 3;
+  }
+  checkTowerAggro(){
+    const enemyTowers = this.team==='blue'? state.redTowers : state.blueTowers;
+    if(!enemyTowers) return;
+    for(const t of enemyTowers){
+      if(t.alive && dist(this,t) <= t.range){ this.aggroTimer = 3; break; }
+    }
+  }
+  gainXp(amount){
+    if(!this.alive) return;
+    this.xp += amount;
+    while(this.xp >= this.xpToNext){
+      this.xp -= this.xpToNext;
+      this.levelUp();
+    }
+  }
+  levelUp(){
+    this.level++;
+    this.xpToNext = Math.round(100 + this.level*45);
+    const hpGain = 55+this.level*6, mpGain=28, adGain=4, apGain=5, arGain=2;
+    this.maxHp += hpGain; this.hp += hpGain;
+    this.maxMana += mpGain; this.mana += mpGain;
+    this.ad += adGain; this.ap += apGain; this.armor += arGain;
+    spawnParticles(this.x,this.y-20,'#fff3b0',24);
+    log(`${this.name} reached level ${this.level}!`, '#ffe9a8');
+  }
+  die(source){
+    this.alive=false;
+    this.moveTarget=null; this.attackTarget=null; this.recalling=false;
+    const bounty = 120 + this.level*12;
+    grantGold(source, bounty);
+    if(source && source.kind==='hero') source.gainXp(90+this.level*10);
+    log(`${this.name} was slain!`, this.team==='blue'?'#ff9b95':'#8fd0ff');
+    this.respawnTimer = 6 + this.level*1.6;
+    spawnParticles(this.x,this.y,'#ffffff',26);
+  }
+  respawn(){
+    this.alive=true;
+    const sp = this.team==='blue'?BLUE_SPAWN:RED_SPAWN;
+    this.x=sp.x; this.y=sp.y;
+    this.hp=this.maxHp; this.mana=this.maxMana;
+    log(`${this.name} has respawned.`, '#c8ffcf');
+  }
+  tryCast(key, targetPos){
+    if(!this.alive || this.recalling) return false;
+    const def = ABILITY_DEFS[key];
+    if(!def) return false;
+    if(key==='r' && this.level<6) return false;
+    if(this.cds[key] > 0) return false;
+    if(this.mana < def.mana) return false;
+    this.mana -= def.mana;
+    this.cds[key] = def.cd;
+    def.cast(this, targetPos);
+    return true;
+  }
+}
+
+function grantGold(source, amount){
+  if(source && source.kind==='hero') source.gold += amount;
+}
+function grantXpNear(x,y,amount,excludeTeam,range){
+  range = range || 900;
+  for(const h of [state.player, state.enemyHero]){
+    if(h && h.alive && h.team!==excludeTeam && dist(h,{x,y}) <= range) h.gainXp(amount);
+  }
+}
+function onUnitDeath(unit, source){
+  if(unit.kind==='minion'){
+    grantXpNear(unit.x,unit.y, unit.xpValue, unit.team, 620);
+    grantGold(source, unit.goldValue);
+  } else if(unit.kind==='camp'){
+    if(source && source.kind==='hero'){
+      grantGold(source, 90);
+      source.gainXp(60);
+      source.buffs.push({stat:'ad', value: Math.round(source.effAd()*0.18), expire:30});
+      log(`${source.name} slew the Ember Wolf and gained power!`, '#ffd98a');
+    }
+  }
+}
+
+// ---------- abilities ----------
+function castQ(hero, targetPos){
+  const ang = Math.atan2(targetPos.y-hero.y, targetPos.x-hero.x);
+  state.projectiles.push({
+    x:hero.x,y:hero.y, vx:Math.cos(ang)*560, vy:Math.sin(ang)*560,
+    owner:hero, radius:16, life:1.4,
+    dmg: 46+hero.level*13+hero.effAp()*0.6, color: ABILITY_DEFS.q.color, kind:'q'
+  });
+  addEffect(hero.x,hero.y,10,ABILITY_DEFS.q.color,0.3);
+}
+function castW(hero, targetPos){
+  const ang = Math.atan2(targetPos.y-hero.y, targetPos.x-hero.x);
+  const dashDist = 160;
+  const nx = hero.x+Math.cos(ang)*dashDist, ny = hero.y+Math.sin(ang)*dashDist;
+  const steps=10;
+  for(let i=1;i<=steps;i++){
+    const px = hero.x+(nx-hero.x)*i/steps, py = hero.y+(ny-hero.y)*i/steps;
+    for(const e of allCombatUnits()){
+      if(e.alive && hero.isEnemyOf(e) && e.kind!=='nexus' && dist({x:px,y:py},e) < 42){
+        e.takeDamage(24+hero.level*7+hero.effAp()*0.4, hero);
+      }
+    }
+  }
+  hero.x = clamp(nx,20,W-20); hero.y = clamp(ny,20,H-20);
+  hero.buffs.push({stat:'speed', value:90, expire:1.2});
+  addEffect(hero.x,hero.y,36,ABILITY_DEFS.w.color,0.4);
+}
+function castE(hero, targetPos){
+  for(const e of allCombatUnits()){
+    if(e.alive && hero.isEnemyOf(e) && e.kind!=='nexus' && dist(hero,e) < 135){
+      e.takeDamage(32+hero.level*9+hero.effAp()*0.5, hero);
+      if(e.buffs) e.buffs.push({stat:'speed', value:-60, expire:2});
+      else e.slowUntil = state.time+2;
+    }
+  }
+  addEffect(hero.x,hero.y,135,ABILITY_DEFS.e.color,0.5);
+}
+function castR(hero, targetPos){
+  const tx=targetPos.x, ty=targetPos.y;
+  addEffect(tx,ty,40,ABILITY_DEFS.r.color,0.75);
+  state.pendingMeteors = state.pendingMeteors||[];
+  state.pendingMeteors.push({x:tx,y:ty,t:0.75,owner:hero});
+}
+function processMeteors(dt){
+  if(!state.pendingMeteors) return;
+  for(const m of state.pendingMeteors){
+    m.t -= dt;
+    if(m.t<=0){
+      addEffect(m.x,m.y,150,ABILITY_DEFS.r.color,0.6);
+      for(const e of allCombatUnits()){
+        if(e.alive && m.owner.isEnemyOf(e) && dist(m,e) < 150){
+          e.takeDamage(150+m.owner.level*18+m.owner.effAp()*0.9, m.owner);
+        }
+      }
+      m.dead=true;
+    }
+  }
+  state.pendingMeteors = state.pendingMeteors.filter(m=>!m.dead);
+}
+
+// ---------- simple AI ----------
+function aiUpdate(hero, dt){
+  const enemy = state.player;
+  const myTower = hero.team==='red'? state.redTowers : state.blueTowers;
+  if(hero.hp < hero.maxHp*0.28){
+    const sp = hero.team==='blue'?BLUE_SPAWN:RED_SPAWN;
+    moveToward(hero, sp.x, sp.y, hero.effSpeed(), dt);
+    return;
+  }
+  let nearest=null, nd=Infinity;
+  for(const e of allCombatUnits()){
+    if(!e.alive || !hero.isEnemyOf(e) || e.kind==='nexus') continue;
+    const d = hero.distTo(e);
+    if(d<nd){ nd=d; nearest=e; }
+  }
+  const frontMinion = state.entities.find(e=>e.alive && e.kind==='minion' && e.team===hero.team);
+  const advancePoint = frontMinion || pointAtFraction(hero.team==='red'?0.6:0.4);
+
+  if(nearest && nd < 480){
+    tryAiCast(hero, nearest);
+    if(nd <= hero.range){
+      hero.atkTimer -= dt;
+      if(hero.atkTimer<=0){ hero.atkTimer=hero.atkCd; hero.basicAttack(nearest); }
+    } else {
+      moveToward(hero, nearest.x, nearest.y, hero.effSpeed(), dt);
+    }
+  } else {
+    moveToward(hero, advancePoint.x, advancePoint.y, hero.effSpeed(), dt);
+  }
+}
+function tryAiCast(hero, target){
+  const order = ['q','e','w'];
+  if(hero.level>=6) order.unshift('r');
+  for(const k of order){
+    if(Math.random()<0.02){
+      if(hero.tryCast(k, target)) break;
+    }
+  }
+}
+
+// ---------- HUD drawing ----------
+function drawHpBar(u, yOff){
+  const w=44, h=6;
+  const x = u.x - w/2, y = u.y - yOff;
+  ctx.fillStyle='rgba(10,10,14,0.75)';
+  ctx.fillRect(x-1,y-1,w+2,h+2);
+  const pct = clamp(u.hp/u.maxHp,0,1);
+  ctx.fillStyle = u.kind==='hero' ? (u.team==='blue'?'#5bd0ff':'#ff6b63') : (u.team==='blue'?'#3f8fd6':'#c9463d');
+  if(u.kind==='camp'||u.team==='neutral') ctx.fillStyle='#8ce06a';
+  ctx.fillRect(x,y,w*pct,h);
+  if(u.kind==='hero'){
+    const my = y - 5;
+    ctx.fillStyle='rgba(10,10,14,0.6)'; ctx.fillRect(x-1,my-4,w+2,4);
+    ctx.fillStyle='#5f7fd9'; ctx.fillRect(x,my-4+1, w*clamp(u.mana/u.maxMana,0,1), 3);
+  }
+}
+
+// ---------- map drawing ----------
+function drawMap(){
+  ctx.fillStyle='#213018';
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(255,255,255,0.02)';
+  for(let i=0;i<40;i++){
+    ctx.beginPath();
+    ctx.arc((i*137)%W, (i*211)%H, 40, 0, 7);
+    ctx.fill();
+  }
+  ctx.strokeStyle='#4a3f2c';
+  ctx.lineWidth=70;
+  ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(LANE[0].x,LANE[0].y);
+  for(let i=1;i<LANE.length;i++) ctx.lineTo(LANE[i].x,LANE[i].y);
+  ctx.stroke();
+  ctx.strokeStyle='#5c4f38';
+  ctx.lineWidth=58;
+  ctx.beginPath();
+  ctx.moveTo(LANE[0].x,LANE[0].y);
+  for(let i=1;i<LANE.length;i++) ctx.lineTo(LANE[i].x,LANE[i].y);
+  ctx.stroke();
+  ctx.strokeStyle='rgba(90,150,190,0.25)';
+  ctx.lineWidth=34;
+  ctx.beginPath();
+  ctx.moveTo(0,650); ctx.quadraticCurveTo(450,470,900,300);
+  ctx.stroke();
+
+  drawBaseZone(BLUE_NEXUS_POS,'#3f8fd6');
+  drawBaseZone(RED_NEXUS_POS,'#c9463d');
+}
+function drawBaseZone(pos,color){
+  ctx.save();
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(pos.x,pos.y,120,0,7); ctx.fill();
+  ctx.restore();
+}
+
+// ================== MOBILE TOUCH INPUT ==================
+const appEl = document.getElementById('app');
+const gameArea = document.getElementById('game-area');
+
+// -------- responsive fit: keep the 900x900 world square, letterboxed --------
+function fitApp(){
+  const availW = gameArea.clientWidth;
+  const availH = gameArea.clientHeight;
+  const size = Math.max(220, Math.floor(Math.min(availW, availH)));
+  appEl.style.width = size+'px';
+  appEl.style.height = size+'px';
+}
+window.addEventListener('resize', fitApp);
+window.addEventListener('orientationchange', ()=>setTimeout(fitApp,150));
+fitApp();
+
+// -------- joystick (pointer events, continuous free movement) --------
+const joyZone = document.getElementById('joystick-zone');
+const joyOuter = document.getElementById('joystick-outer');
+const joyThumb = document.getElementById('joystick-thumb');
+let joyPointerId = null, joyCenter = {x:0,y:0};
+const JOY_MAX_R = 46;
+
+function joyStart(e){
+  if(joyPointerId !== null) return;
+  joyPointerId = e.pointerId;
+  joyZone.setPointerCapture(joyPointerId);
+  const r = joyOuter.getBoundingClientRect();
+  joyCenter = {x: r.left + r.width/2, y: r.top + r.height/2};
+  joyUpdate(e);
+  e.preventDefault();
+}
+function joyMove(e){
+  if(e.pointerId !== joyPointerId) return;
+  joyUpdate(e);
+  e.preventDefault();
+}
+function joyEnd(e){
+  if(e.pointerId !== joyPointerId) return;
+  joyPointerId = null;
+  joystick.active = false; joystick.x = 0; joystick.y = 0;
+  joyThumb.style.transform = 'translate(0px,0px)';
+}
+function joyUpdate(e){
+  const dx = e.clientX - joyCenter.x, dy = e.clientY - joyCenter.y;
+  const d = Math.hypot(dx,dy);
+  const mag = Math.min(1, d/JOY_MAX_R);
+  const ang = d>0.001 ? Math.atan2(dy,dx) : 0;
+  const cl = mag*JOY_MAX_R;
+  joyThumb.style.transform = `translate(${Math.cos(ang)*cl}px,${Math.sin(ang)*cl}px)`;
+  joystick.x = Math.cos(ang)*mag;
+  joystick.y = Math.sin(ang)*mag;
+  joystick.active = mag > 0.12;
+}
+joyZone.addEventListener('pointerdown', joyStart);
+joyZone.addEventListener('pointermove', joyMove);
+joyZone.addEventListener('pointerup', joyEnd);
+joyZone.addEventListener('pointercancel', joyEnd);
+
+// -------- ability aiming: tap ability to arm, tap the map to fire --------
+let armedAim = null; // 'q' | 'w' | 'r' | null
+const aimHint = document.getElementById('aim-hint');
+function setArmed(key){
+  armedAim = key;
+  for(const k of ['q','w','r']) abilityEls[k].classList.toggle('armed', armedAim===k);
+  if(key){
+    aimHint.style.display='block';
+    aimHint.textContent = `Tap the battlefield to aim ${ABILITY_DEFS[key].name}`;
+  } else {
+    aimHint.style.display='none';
+  }
+}
+function handleAbilityTap(key){
+  const p = state.player;
+  if(!state.started || state.over || !p) return;
+  if(key==='e'){
+    setArmed(null);
+    p.tryCast('e', {x:p.x, y:p.y});
+    return;
+  }
+  if(key==='r' && p.level<6) return;
+  if(armedAim === key){ setArmed(null); return; } // tap again to cancel
+  setArmed(key);
+}
+['q','w','r'].forEach(k=>{
+  document.getElementById('ab-'+k).addEventListener('pointerdown', ev=>{
+    ev.preventDefault(); handleAbilityTap(k);
+  });
+});
+document.getElementById('ab-e').addEventListener('pointerdown', ev=>{
+  ev.preventDefault(); handleAbilityTap('e');
+});
+
+// -------- recall (top pill + bottom sub button) --------
+function toggleRecall(){
+  const p = state.player;
+  if(!state.started || state.over || !p || !p.alive) return;
+  if(!p.recalling){ p.recalling=true; p.recallTimer=3; log(`${p.name} is recalling...`, '#bcefff'); }
+}
+document.getElementById('ab-recall').addEventListener('pointerdown', ev=>{ ev.preventDefault(); toggleRecall(); });
+document.getElementById('recall-btn-top').addEventListener('pointerdown', ev=>{ ev.preventDefault(); toggleRecall(); });
+
+// -------- auto-attack nearest button --------
+document.getElementById('ab-atk').addEventListener('pointerdown', ev=>{
+  ev.preventDefault();
+  const p = state.player;
+  if(!state.started || state.over || !p || !p.alive) return;
+  const clickable = [...state.entities];
+  if(state.enemyHero && state.enemyHero.alive) clickable.push(state.enemyHero);
+  for(const c of state.camps) if(c.unit.alive) clickable.push(c.unit);
+  let best=null, bd=Infinity;
+  for(const en of clickable){
+    if(!en.alive || en.team===p.team || en.kind==='nexus') continue;
+    const d = dist(p, en);
+    if(d < 520 && d < bd){ best=en; bd=d; }
+  }
+  if(best){ p.attackTarget = best; p.moveTarget = null; }
+});
+
+// -------- canvas tap: confirm armed ability, target enemy, or move-to-point --------
+canvas.addEventListener('pointerdown', e=>{
+  if(!state.started || state.over) return;
+  const p = state.player;
+  if(!p || !p.alive) return;
+  const r = canvas.getBoundingClientRect();
+  const x = (e.clientX-r.left) * (canvas.width/r.width);
+  const y = (e.clientY-r.top) * (canvas.height/r.height);
+
+  if(armedAim){
+    const key = armedAim;
+    setArmed(null);
+    p.tryCast(key, {x,y});
+    return;
+  }
+
+  const clickable = [...state.entities];
+  if(state.enemyHero && state.enemyHero.alive) clickable.push(state.enemyHero);
+  for(const c of state.camps) if(c.unit.alive) clickable.push(c.unit);
+  let clicked = null, bd=Infinity;
+  for(const en of clickable){
+    if(!en.alive || en.team===p.team) continue;
+    const d = dist({x,y}, en);
+    if(d < en.radius+14 && d<bd){ clicked=en; bd=d; }
+  }
+  if(clicked){
+    p.attackTarget = clicked;
+    p.moveTarget = null;
+  } else if(!joystick.active){
+    p.attackTarget = null;
+    p.moveTarget = {x,y};
+  }
+}, {passive:false});
+
+// -------- shop modal --------
+const shopModal = document.getElementById('shop-modal');
+function openShop(){ shopModal.style.display='flex'; }
+function closeShop(){ shopModal.style.display='none'; }
+document.getElementById('shop-btn').addEventListener('pointerdown', ev=>{ ev.preventDefault(); openShop(); });
+document.getElementById('shop-close').addEventListener('pointerdown', ev=>{ ev.preventDefault(); closeShop(); });
+shopModal.addEventListener('pointerdown', ev=>{ if(ev.target===shopModal) closeShop(); });
+
+const SHOP_ITEMS = {
+  '1':{name:'Ember Blade', cost:400, apply:h=>h.buffs.push({stat:'ad',value:18,expire:99999})},
+  '2':{name:'Arcane Focus', cost:400, apply:h=>h.buffs.push({stat:'ap',value:30,expire:99999})},
+  '3':{name:'Guardian Plate', cost:380, apply:h=>{h.buffs.push({stat:'armor',value:32,expire:99999}); h.maxHp+=110; h.hp+=110;}},
+  '4':{name:'Swift Boots', cost:300, apply:h=>h.buffs.push({stat:'speed',value:42,expire:99999})},
+};
+function tryBuy(hero, key){
+  const item = SHOP_ITEMS[key];
+  if(!item) return;
+  const base = hero.team==='blue'?BLUE_NEXUS_POS:RED_NEXUS_POS;
+  if(dist(hero, base) > 130){ log('Move closer to your base to shop!', '#ff9b95'); return; }
+  if(hero.gold < item.cost){ log('Not enough gold.', '#ff9b95'); return; }
+  hero.gold -= item.cost;
+  item.apply(hero);
+  hero.items.push(item.name);
+  log(`Purchased ${item.name}!`, '#c8ffcf');
+}
+for(const k of ['1','2','3','4']){
+  document.getElementById('shop-'+k).addEventListener('pointerdown', ev=>{
+    ev.preventDefault();
+    if(state.player) tryBuy(state.player, k);
+  });
+}
+
+// ---------- HUD update (DOM) ----------
+const hudGold = document.getElementById('hud-gold');
+const hudLevel = document.getElementById('hud-level');
+const hudXpBar = document.getElementById('hud-xp-bar');
+const hudHpBar = document.getElementById('hud-hp-bar');
+const hudMpBar = document.getElementById('hud-mp-bar');
+const hudHpText = document.getElementById('hud-hp-text');
+const logEl = document.getElementById('log');
+const abilityEls = { q:document.getElementById('ab-q'), w:document.getElementById('ab-w'), e:document.getElementById('ab-e'), r:document.getElementById('ab-r') };
+const shopEls = { '1':document.getElementById('shop-1'), '2':document.getElementById('shop-2'), '3':document.getElementById('shop-3'), '4':document.getElementById('shop-4') };
+const recallBar = document.getElementById('recall-bar');
+const recallFill = document.getElementById('recall-fill');
+
+function updateHud(){
+  const p = state.player;
+  if(!p) return;
+  hudGold.textContent = Math.floor(p.gold);
+  hudLevel.textContent = p.level;
+  hudXpBar.style.width = clamp(p.xp/p.xpToNext,0,1)*100+'%';
+  hudHpBar.style.width = clamp(p.hp/p.maxHp,0,1)*100+'%';
+  hudMpBar.style.width = clamp(p.mana/p.maxMana,0,1)*100+'%';
+  hudHpText.textContent = `${Math.max(0,Math.floor(p.hp))} / ${Math.floor(p.maxHp)}`;
+  for(const k of ['q','w','e','r']){
+    const def = ABILITY_DEFS[k];
+    const el = abilityEls[k];
+    const locked = k==='r' && p.level<6;
+    el.classList.toggle('locked', locked);
+    const cdFrac = locked?1:clamp(p.cds[k]/def.cd,0,1);
+    el.querySelector('.cd-overlay').style.height = (cdFrac*100)+'%';
+    el.querySelector('.cd-text').textContent = locked? 'Lv6' : (p.cds[k]>0.05? Math.ceil(p.cds[k]) : '');
+  }
+  for(const k of ['1','2','3','4']){
+    shopEls[k].classList.toggle('affordable', p.gold >= SHOP_ITEMS[k].cost);
+  }
+  if(p.recalling){
+    recallBar.style.display='block';
+    recallFill.style.width = ((3-p.recallTimer)/3*100)+'%';
+  } else {
+    recallBar.style.display='none';
+  }
+  logEl.innerHTML = state.log.map(l=>`<div style="color:${l.color}">${l.msg}</div>`).join('');
+}
+
+// ---------- minion waves ----------
+let waveCount = 0;
+function spawnWave(){
+  waveCount++;
+  const n = 3;
+  for(let i=0;i<n;i++){
+    setTimeout(()=>{
+      if(state.over) return;
+      state.entities.push(new Minion('blue', waveCount));
+      state.entities.push(new Minion('red', waveCount));
+    }, i*450);
+  }
+}
+
+// ---------- projectiles & effects update ----------
+function updateProjectiles(dt){
+  for(const pr of state.projectiles){
+    pr.x += pr.vx*dt; pr.y += pr.vy*dt; pr.life -= dt;
+    if(pr.life<=0){ pr.dead=true; continue; }
+    for(const e of allCombatUnits()){
+      if(e.alive && pr.owner.isEnemyOf(e) && e.kind!=='nexus' && dist(pr,e) < pr.radius+e.radius){
+        e.takeDamage(pr.dmg, pr.owner);
+        pr.dead=true;
+        break;
+      }
+    }
+  }
+  state.projectiles = state.projectiles.filter(p=>!p.dead);
+}
+function updateEffects(dt){
+  for(const ef of state.effects) ef.age += dt;
+  state.effects = state.effects.filter(ef=>ef.age < ef.duration);
+}
+function updateParticles(dt){
+  for(const p of state.particles){
+    p.age += dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vx*=0.9; p.vy*=0.9;
+  }
+  state.particles = state.particles.filter(p=>p.age < p.life);
+}
+
+// ---------- draw projectiles/effects/particles ----------
+function drawProjectiles(){
+  for(const pr of state.projectiles){
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    const grd = ctx.createRadialGradient(pr.x,pr.y,0,pr.x,pr.y,pr.radius);
+    grd.addColorStop(0,'#fff2cc'); grd.addColorStop(1, ABILITY_DEFS.q.color);
+    ctx.fillStyle=grd;
+    ctx.beginPath(); ctx.arc(pr.x,pr.y,pr.radius,0,7); ctx.fill();
+    ctx.restore();
+  }
+}
+function drawEffects(){
+  for(const ef of state.effects){
+    const t = ef.age/ef.duration;
+    ctx.save();
+    ctx.globalAlpha = (1-t)*0.5;
+    ctx.strokeStyle = ef.color;
+    ctx.lineWidth=4;
+    ctx.beginPath(); ctx.arc(ef.x,ef.y, ef.radius*(0.4+t*0.6), 0,7); ctx.stroke();
+    ctx.restore();
+  }
+}
+function drawParticles(){
+  for(const p of state.particles){
+    const t = 1-p.age/p.life;
+    ctx.save();
+    ctx.globalAlpha = t;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,3,0,7); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawHero(h){
+  if(!h.alive) return;
+  ctx.save();
+  ctx.translate(h.x,h.y);
+  if(h.recalling){
+    ctx.globalAlpha=0.6;
+    ctx.strokeStyle='#bcefff'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(0,0,26*(1-h.recallTimer/3),0,7); ctx.stroke();
+  }
+  const col = h.team==='blue' ? '#5bd0ff' : '#ff6b63';
+  ctx.fillStyle = col;
+  ctx.strokeStyle = '#1a1e26';
+  ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.arc(0,0,17,0,7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#fff8e0';
+  ctx.beginPath(); ctx.arc(0,-22,5,0,7); ctx.fill();
+  if(h.isPlayer){
+    ctx.strokeStyle='#ffe9a8'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(0,0,22,0,7); ctx.stroke();
+  }
+  ctx.restore();
+  drawHpBar(h, 30);
+}
+
+// ---------- main loop ----------
+let lastT = performance.now();
+function frame(now){
+  const dt = Math.min(0.05, (now-lastT)/1000);
+  lastT = now;
+  if(state.started && !state.over){
+    state.time += dt;
+    for(const e of state.entities) e.update(dt);
+    if(state.player) state.player.update(dt);
+    if(state.enemyHero) state.enemyHero.update(dt);
+    for(const c of state.camps) c.update(dt);
+    updateProjectiles(dt);
+    processMeteors(dt);
+    updateEffects(dt);
+    updateParticles(dt);
+    state.entities = state.entities.filter(e=>e.alive);
+
+    state.minionWaveTimer -= dt;
+    if(state.minionWaveTimer<=0){ state.minionWaveTimer = 26; spawnWave(); }
+    state.goldTickTimer -= dt;
+    if(state.goldTickTimer<=0){
+      state.goldTickTimer = 1;
+      for(const h of [state.player, state.enemyHero]) if(h && h.alive) h.gold += 2.2;
+    }
+    updateHud();
+    checkGameOver();
+  }
+  ctx.clearRect(0,0,W,H);
+  drawMap();
+  if(state.blueTowers) state.blueTowers.forEach(t=>t.draw());
+  if(state.redTowers) state.redTowers.forEach(t=>t.draw());
+  if(state.blueNexus) state.blueNexus.draw();
+  if(state.redNexus) state.redNexus.draw();
+  for(const c of state.camps) c.draw();
+  for(const e of state.entities) if(e.kind==='minion') e.draw();
+  drawEffects();
+  drawProjectiles();
+  if(state.enemyHero) drawHero(state.enemyHero);
+  if(state.player) drawHero(state.player);
+  drawParticles();
+  requestAnimationFrame(frame);
+}
+
+function checkGameOver(){
+  if(state.over){
+    document.getElementById('overlay-over').style.display='flex';
+    document.getElementById('over-title').textContent = state.winner==='blue' ? 'VICTORY!' : 'DEFEAT';
+    document.getElementById('over-title').style.color = state.winner==='blue' ? '#8fffb0' : '#ff8a80';
+    document.getElementById('over-sub').textContent = state.winner==='blue' ? 'The Ember Nexus stands triumphant.' : 'Your Nexus has fallen.';
+  }
+}
+
+// ---------- init / start ----------
+function initGame(){
+  state.started=false; state.over=false; state.winner=null; state.time=0;
+  state.entities = []; state.projectiles=[]; state.effects=[]; state.particles=[]; state.log=[];
+  state.minionWaveTimer = 6; state.goldTickTimer=1;
+  state.player = new Hero('blue', true, 'Ashen Pyromancer');
+  state.enemyHero = new Hero('red', false, 'Frost Warden');
+  state.blueTowers = [ new Tower('blue', bt1.x,bt1.y, 'Blue Outer Tower'), new Tower('blue', bt2.x,bt2.y,'Blue Inner Tower') ];
+  state.redTowers = [ new Tower('red', rt1.x,rt1.y,'Red Outer Tower'), new Tower('red', rt2.x,rt2.y,'Red Inner Tower') ];
+  state.entities.push(...state.blueTowers, ...state.redTowers);
+  state.blueNexus = new Nexus('blue', BLUE_NEXUS_POS.x, BLUE_NEXUS_POS.y);
+  state.redNexus = new Nexus('red', RED_NEXUS_POS.x, RED_NEXUS_POS.y);
+  state.entities.push(state.blueNexus, state.redNexus);
+  state.camps = [ new Camp(JUNGLE_CAMP_POS.x,JUNGLE_CAMP_POS.y), new Camp(JUNGLE_CAMP2_POS.x,JUNGLE_CAMP2_POS.y) ];
+  log('The battle begins! Push the lane and destroy the enemy Nexus.', '#ffe9a8');
+  setArmed(null);
+  closeShop();
+}
+function startGame(){
+  initGame();
+  state.started = true;
+  document.getElementById('overlay-start').style.display='none';
+  document.getElementById('overlay-over').style.display='none';
+  fitApp();
+}
+document.getElementById('btn-start').addEventListener('click', startGame);
+document.getElementById('btn-again').addEventListener('click', startGame);
+
+initGame();
+requestAnimationFrame(frame);
+})();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
